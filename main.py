@@ -10,6 +10,7 @@ from typing import Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import pandas as pd
+import re
 
 
 def fetch_links(url,page,property_links):
@@ -60,11 +61,25 @@ def getTypeOfSale(data):
             return key.replace("is", "")
     return None
 
-def get_property_data(house_index, url):
+def extract_energy_certificate(script_content):
+    # Regex to find energy_certificate value
+    match = re.search(r'"energy_certificate"\s*:\s*"([^"]*)"', script_content)
+    
+    if match:
+        return match.group(1)
+    
+    return None
+
+def get_property_data(house_index,url):
     response = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"})
     parsed_data = {}
     if response.status_code == 200:
+        response_text = response.text
         soup = BeautifulSoup(response.content, 'html.parser')
+        soup2 = BeautifulSoup(response_text, 'html.parser')
+        script_tag = soup.find('script', string=lambda text: text and 'av_items' in text)
+        script_content = script_tag.string
+        
         s = soup.select('iw-load-advertisements')
         if len(s) > 0 and s[0].has_attr(":classified"):
             data = json.loads(s[0].attrs[":classified"])
@@ -92,6 +107,7 @@ def get_property_data(house_index, url):
             parsed_data["livingArea"] = get_in(data, ["property", "netHabitableSurface"])
             parsed_data["surfaceOfThePlot"] = get_in(data, ["property", "land", "surface"])
             parsed_data["typeOfSale"] = getTypeOfSale(data)
+            parsed_data["energy_certificate"] = extract_energy_certificate(script_content)
             
             pool = get_in(data, ["property", "hasSwimmingPool"])
             if pool:
@@ -136,6 +152,7 @@ def get_property_data(house_index, url):
                 parsed_data["gardenSurface"] = 0
     
     return house_index,parsed_data  
+ 
     
 
 def save_property_data_2_csv(file_path,fieldnames, properties_data):
